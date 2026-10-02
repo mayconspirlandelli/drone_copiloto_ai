@@ -7,7 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ENV_FILE = path.join(__dirname, '..', '.env')
 if (fs.existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE)
 
-const { ApiError, runAgentTurn } = await import('./agent.js')
+const { getProvider, runAgentTurn } = await import('./agent.js')
+const { defaultProvider, listProviders, ProviderConfigError } = await import('./llm/index.js')
 
 const DIST_DIR = path.join(__dirname, '..', 'dist')
 const PORT = process.env.PORT || 3001
@@ -17,36 +18,46 @@ const app = express()
 // Fotos e desenhos chegam em base64 (já reduzidos no navegador).
 app.use(express.json({ limit: '20mb' }))
 
-app.post('/api/plano-chat', async (req, res) => {
-  const { contents } = req.body ?? {}
+const mensagensDeErro = {
+  401: 'Chave da API inválida. Confira o .env.',
+  403: 'A chave não tem permissão para este modelo. Confira o .env.',
+  404: 'Modelo não encontrado. Confira o nome do modelo no .env.',
+  429: 'Limite de uso da API atingido. Aguarde alguns segundos e tente de novo.',
+}
 
-  if (!Array.isArray(contents) || contents.length === 0 || contents.length > MAX_CONTENTS) {
-    res.status(400).json({ erro: 'Histórico de conversa inválido.' })
-    return
-  }
-  if (!process.env.GOOGLE_API_KEY) {
-    res.status(503).json({ erro: 'Copiloto sem chave da API do Gemini. Defina GOOGLE_API_KEY no arquivo .env e reinicie o servidor.' })
-    return
-  }
-  if (contents.at(-1)?.role !== 'user') {
-    res.status(400).json({ erro: 'A última mensagem deve ser do piloto.' })
+app.get('/api/provedores', (_req, res) => {
+  res.json({ padrao: defaultProvider(), provedores: listProviders() })
+})
+
+app.post('/api/plano-chat', async (req, res) => {
+  const { provider = defaultProvider(), history = [], mensagem } = req.body ?? {}
+
+  const imagensOk =
+    Array.isArray(mensagem?.images) &&
+    mensagem.images.length <= 4 &&
+    mensagem.images.every((img) => /^image\/(png|jpeg|webp|gif)$/.test(img?.mimeType) && typeof img.data === 'string')
+  if (!Array.isArray(history) || history.length > MAX_CONTENTS || typeof mensagem?.text !== 'string' || !imagensOk) {
+    res.status(400).json({ erro: 'Mensagem ou histórico de conversa inválido.' })
     return
   }
 
   try {
-    res.json(await runAgentTurn(contents))
+    res.json(await runAgentTurn({ provider, history, mensagem }))
   } catch (err) {
-    if (err instanceof ApiError) {
-      const msg = {
-        401: 'Chave da API do Gemini inválida (GOOGLE_API_KEY).',
-        403: 'Chave da API do Gemini sem permissão para este modelo (GOOGLE_API_KEY / ADK_MODEL).',
-        404: 'Modelo não encontrado. Confira ADK_MODEL no .env.',
-        429: 'Limite de uso da API do Gemini atingido. Aguarde alguns segundos e tente de novo.',
-      }[err.status]
-      console.error(`Gemini ${err.status}:`, err.message)
-      // O Gemini devolve 400 também para chave inválida — repassa o motivo.
-      const motivo = err.status === 400 ? /API key not valid/i.test(err.message) ? 'Chave da API do Gemini inválida (GOOGLE_API_KEY).' : `Requisição recusada pela API do Gemini: ${err.message.slice(0, 300)}` : null
-      res.status(err.status === 429 ? 429 : 502).json({ erro: msg ?? motivo ?? `Falha na API do Gemini (${err.status}). Tente novamente.` })
+    if (err instanceof ProviderConfigError) {
+      res.status(err.status).json({ erro: err.message })
+      return
+    }
+    let normalizado = null
+    try {
+      normalizado = getProvider(provider).normalizeError(err)
+    } catch {
+      // provedor indisponível: cai no erro genérico
+    }
+    if (normalizado) {
+      console.error(`[${provider}] ${normalizado.status}:`, normalizado.message)
+      const erro = mensagensDeErro[normalizado.status] ?? `Falha na API (${normalizado.status}): ${normalizado.message.slice(0, 300)}`
+      res.status(normalizado.status === 429 ? 429 : 502).json({ erro })
     } else {
       console.error(err)
       res.status(500).json({ erro: 'Erro inesperado no copiloto.' })

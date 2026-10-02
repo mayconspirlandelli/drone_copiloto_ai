@@ -40,12 +40,28 @@ Entrada por voz e leitura das respostas usam a Web Speech API do navegador (pt-B
 
 | Arquivo | Papel |
 | --- | --- |
-| `server/agent.js` | Agente com a API do Google Gemini (`@google/genai`, modelo definido em `ADK_MODEL`, padrão `gemini-2.5-flash`): instrução de sistema = skill `dronepilot-flight` + roteiro da conversa; funções `solicitar_desenho` e `gerar_planta_e_cenas` |
-| `server/index.js` | Express: `POST /api/plano-chat` e arquivos estáticos de `dist/` |
+| `server/agent.js` | Agente neutro: instrução de sistema = skill `dronepilot-flight` + roteiro da conversa; ferramentas `solicitar_desenho` e `gerar_planta_e_cenas` em JSON Schema; laço de chamadas de ferramenta |
+| `server/llm/` | Adaptadores por provedor, cada um com o SDK oficial: `gemini.js` (`@google/genai`), `openai.js` (`openai`, também usado pelo Ollama), `anthropic.js` (`@anthropic-ai/sdk`) e o registro `index.js` |
+| `server/index.js` | Express: `GET /api/provedores`, `POST /api/plano-chat` e arquivos estáticos de `dist/` |
 | `src/pages/PlanoDeVooChat.jsx` | Chat, anexos de foto, voz e resultado |
 | `src/components/plano/SketchPad.jsx` | Editor de desenho do mapa |
 | `src/components/plano/PlantaCAD.jsx` | Planta baixa estilo AutoCAD + animação do drone |
 | `src/data/demoPlano.js` | Resultado de exemplo |
+
+### Modelos de IA suportados
+
+| Provedor | Variáveis no `.env` | Modelo padrão |
+| --- | --- | --- |
+| Google Gemini | `GOOGLE_API_KEY`, `ADK_MODEL` | `gemini-2.5-flash` |
+| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` | `gpt-4.1-mini` |
+| Anthropic Claude | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `claude-opus-5-5` |
+| Ollama (local) | `OLLAMA_MODEL`, `OLLAMA_BASE_URL` (opcional) | `mistral-small3.1` |
+
+`LLM_PROVIDER` define o provedor padrão. No topo do chat há um seletor com todos os provedores; os que não têm chave aparecem marcados. Trocar de provedor começa uma conversa nova, porque cada API guarda o histórico em formato próprio.
+
+Para o Ollama, use um modelo com **visão e ferramentas** (ex.: `mistral-small3.1`, `qwen3-vl`). Modelos pequenos podem demorar e errar o JSON da planta — o servidor valida o resultado e pede para o modelo gerar de novo quando vier incompleto.
+
+Para adicionar outro provedor, crie um adaptador em `server/llm/` com `userMessage`, `call`, `toolResults` e `normalizeError` e registre-o em `server/llm/index.js`.
 
 ## Skill do copiloto
 
@@ -54,7 +70,7 @@ A skill original (plugin Codex `dronepilot-ai` v0.1.0) está instalada como skil
 
 ## Desenvolvimento
 
-Copie `.env.example` para `.env` e preencha `GOOGLE_API_KEY` (necessária para o chat do plano de voo). Gere a chave em https://aistudio.google.com/apikey. `ADK_MODEL` define o modelo (padrão `gemini-2.5-flash`).
+Copie `.env.example` para `.env` e preencha a chave de pelo menos um provedor (ou configure o Ollama) para usar o chat do plano de voo.
 
 ```bash
 npm install

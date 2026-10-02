@@ -1,15 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ApiError, GoogleGenAI } from '@google/genai'
+import { getProvider } from './llm/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SKILL_FILE = path.join(__dirname, '..', '.claude', 'skills', 'dronepilot-flight', 'SKILL.md')
 
-const MODEL = process.env.ADK_MODEL || 'gemini-2.5-flash'
 const MAX_TOOL_ROUNDS = 4
-
-const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY })
+const MAX_TOKENS = 16000
 
 // A skill do copiloto é a fonte única das regras de segurança e do domínio.
 function loadSkill() {
@@ -49,12 +47,13 @@ const pointSchema = {
   additionalProperties: false,
 }
 
-const FUNCTION_DECLARATIONS = [
+// Ferramentas em JSON Schema neutro; cada adaptador converte para o formato do seu provedor.
+const TOOLS = [
   {
     name: 'solicitar_desenho',
     description:
       'Abre na tela do piloto um editor para desenhar o mapa do local visto de cima. Use quando já souber o tipo de voo, o local e o horário e precisar do croqui para montar a planta baixa.',
-    parametersJsonSchema: {
+    parameters: {
       type: 'object',
       properties: {
         instrucoes: {
@@ -70,7 +69,7 @@ const FUNCTION_DECLARATIONS = [
     name: 'gerar_planta_e_cenas',
     description:
       'Gera a planta baixa do local em estilo CAD (vista superior, em metros) a partir do desenho e da descrição do piloto, mais 3 sugestões de cenas com a trajetória do drone sobre a planta. O site renderiza e anima o resultado.',
-    parametersJsonSchema: {
+    parameters: {
       type: 'object',
       properties: {
         resumo: {
@@ -189,72 +188,60 @@ function toolResultFor(call) {
   return 'Ferramenta desconhecida.'
 }
 
+/** Confere o mínimo para o site conseguir desenhar a planta (modelos sem schema estrito podem errar). */
+function planoValido(args) {
+  return (
+    args?.planta?.largura_m > 0 &&
+    args?.planta?.profundidade_m > 0 &&
+    Array.isArray(args.planta.elementos) &&
+    Array.isArray(args.cenas) &&
+    args.cenas.length > 0 &&
+    args.cenas.every((c) => Array.isArray(c.trajetoria) && c.trajetoria.length >= 2 && c.alvo)
+  )
+}
+
 /**
- * Executa um turno do agente. `contents` é o histórico completo no formato da API do Gemini
- * (o navegador guarda e reenvia sem alterar — inclusive as assinaturas de raciocínio
- * que o modelo devolve). Retorna os novos conteúdos a anexar ao histórico.
+ * Executa um turno do agente no provedor escolhido.
+ * `history` é o histórico no formato nativo do provedor (o navegador guarda e reenvia
+ * sem alterar — inclusive blocos e assinaturas de raciocínio). Retorna o histórico atualizado.
  */
-export async function runAgentTurn(contents) {
-  const history = [...contents]
-  const appended = []
+export async function runAgentTurn({ provider: providerId, history, mensagem }) {
+  const provider = getProvider(providerId)
+  const conversa = [...history, provider.userMessage(mensagem)]
   const events = { desenho: null, plano: null }
   let finalText = ''
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await ai.models.generateContent({
-      model: MODEL,
-      contents: history,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        tools: [{ functionDeclarations: FUNCTION_DECLARATIONS }],
-        maxOutputTokens: 16000,
-      },
-    })
+    const result = await provider.call({ system: SYSTEM_PROMPT, tools: TOOLS, history: conversa, maxTokens: MAX_TOKENS })
+    conversa.push(...result.messages)
 
-    const candidate = response.candidates?.[0]
-    if (!candidate?.content) {
+    if (result.stop === 'refusal') {
       finalText ||= 'Não posso ajudar com esse pedido. Podemos ajustar o plano para uma captura mais segura?'
       break
     }
+    if (result.text) finalText = finalText ? `${finalText}
 
-    // Guarda o conteúdo do modelo como veio (partes de texto, chamadas e assinaturas).
-    const modelContent = { role: 'model', parts: candidate.content.parts ?? [] }
-    history.push(modelContent)
-    appended.push(modelContent)
-
-    const text = modelContent.parts
-      .filter((p) => p.text && !p.thought)
-      .map((p) => p.text)
-      .join('')
-      .trim()
-    if (text) finalText = finalText ? `${finalText}
-
-${text}` : text
-
-    if (candidate.finishReason === 'MAX_TOKENS') {
+${result.text}` : result.text
+    if (result.stop === 'max_tokens') {
       finalText ||= 'A resposta ficou longa demais e foi interrompida. Pode repetir o pedido?'
       break
     }
+    if (result.toolCalls.length === 0) break
 
-    const calls = response.functionCalls ?? []
-    if (calls.length === 0) break
-
-    for (const call of calls) {
+    const results = result.toolCalls.map((call) => {
       if (call.name === 'solicitar_desenho') events.desenho = call.args
-      if (call.name === 'gerar_planta_e_cenas') events.plano = call.args
-    }
-
-    const results = {
-      role: 'user',
-      parts: calls.map((call) => ({
-        functionResponse: { id: call.id, name: call.name, response: { result: toolResultFor(call) } },
-      })),
-    }
-    history.push(results)
-    appended.push(results)
+      if (call.name === 'gerar_planta_e_cenas') {
+        if (!planoValido(call.args)) {
+          return { ...call, content: 'Erro: planta ou cenas incompletas. Gere novamente com todos os campos e 3 cenas com trajetória.' }
+        }
+        events.plano = call.args
+      }
+      return { ...call, content: toolResultFor(call) }
+    })
+    conversa.push(...provider.toolResults(results))
   }
 
-  return { appended, text: finalText, ...events }
+  return { provider: provider.id, model: provider.model, history: conversa, text: finalText, ...events }
 }
 
-export { ApiError }
+export { getProvider }

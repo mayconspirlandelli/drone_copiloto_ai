@@ -191,7 +191,9 @@ function Resultado({ plano, exemplo }) {
 }
 
 export function PlanoDeVooChat() {
-  const [apiMessages, setApiMessages] = useState([])
+  const [history, setHistory] = useState([]) // histórico no formato nativo do provedor
+  const [provedores, setProvedores] = useState([])
+  const [provider, setProvider] = useState(null)
   const [display, setDisplay] = useState([{ role: 'assistant', text: saudacao }])
   const [input, setInput] = useState('')
   const [anexos, setAnexos] = useState([]) // { block, preview }
@@ -215,6 +217,18 @@ export function PlanoDeVooChat() {
 
   useEffect(() => () => pararFala(), [])
 
+  useEffect(() => {
+    fetch('/api/provedores')
+      .then((r) => r.json())
+      .then((data) => {
+        setProvedores(data.provedores ?? [])
+        setProvider(data.padrao)
+      })
+      .catch(() => {
+        // servidor indisponível: o erro aparece ao enviar a primeira mensagem
+      })
+  }, [])
+
   // Em telas estreitas o resultado fica abaixo do chat: leva o piloto até a planta gerada.
   useEffect(() => {
     if (plano && window.innerWidth < 1024) resultadoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -224,8 +238,7 @@ export function PlanoDeVooChat() {
     setFeitos((prev) => new Set([...prev, ...ids]))
   }
 
-  async function enviarConteudo(content, bubble, { ehDesenho = false } = {}) {
-    const next = [...apiMessages, { role: 'user', parts: content }]
+  async function enviarConteudo(mensagem, bubble, { ehDesenho = false } = {}) {
     setDisplay((d) => [...d.filter((m) => !m.retry), bubble])
     setCarregando(true)
     setGerandoPlano(ehDesenho)
@@ -234,12 +247,12 @@ export function PlanoDeVooChat() {
       const res = await fetch('/api/plano-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: next }),
+        body: JSON.stringify({ provider, history, mensagem }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.erro || `Erro ${res.status}`)
 
-      setApiMessages([...next, ...data.appended])
+      setHistory(data.history)
       if (data.text) {
         setDisplay((d) => [...d, { role: 'assistant', text: data.text }])
         if (lerRespostas) falar(data.text)
@@ -255,7 +268,7 @@ export function PlanoDeVooChat() {
         marcar('tipo', 'local', 'periodo', 'desenho', 'plano')
       }
     } catch (err) {
-      const retry = () => enviarConteudo(content, bubble, { ehDesenho })
+      const retry = () => enviarConteudo(mensagem, bubble, { ehDesenho })
       setDisplay((d) => [
         ...d,
         {
@@ -274,9 +287,9 @@ export function PlanoDeVooChat() {
   function enviar(textoOverride) {
     const texto = (textoOverride ?? input).trim()
     if ((!texto && anexos.length === 0) || carregando) return
-    const content = [...anexos.map((a) => a.block), { text: texto || 'Foto do local do voo.' }]
+    const mensagem = { text: texto || 'Foto do local do voo.', images: anexos.map((a) => a.block) }
     if (anexos.length) marcar('foto')
-    enviarConteudo(content, { role: 'user', text: texto, images: anexos.map((a) => a.preview) })
+    enviarConteudo(mensagem, { role: 'user', text: texto, images: anexos.map((a) => a.preview) })
     setInput('')
     setAnexos([])
   }
@@ -288,7 +301,7 @@ export function PlanoDeVooChat() {
     const texto = `Desenho do mapa do local (vista de cima). ${legendaDesenho}${descricao ? `\nDetalhes: ${descricao}` : ''}`
     marcar('desenho')
     setDesenho(null)
-    enviarConteudo([block, { text: texto }], {
+    enviarConteudo({ text: texto, images: [block] }, {
       role: 'user',
       text: descricao || 'Desenho do mapa do local',
       images: [imagePartToDataUrl(block)],
@@ -310,7 +323,7 @@ export function PlanoDeVooChat() {
 
   function reiniciar() {
     pararFala()
-    setApiMessages([])
+    setHistory([])
     setDisplay([{ role: 'assistant', text: saudacao }])
     setPlano(null)
     setExemplo(false)
@@ -318,8 +331,17 @@ export function PlanoDeVooChat() {
     setFeitos(new Set())
   }
 
+  const provedorAtual = provedores.find((p) => p.id === provider)
+
+  // Cada provedor tem seu formato de histórico: trocar de modelo começa uma conversa nova.
+  function trocarProvedor(id) {
+    if (id === provider) return
+    reiniciar()
+    setProvider(id)
+  }
+
   const ultimaResposta = [...display].reverse().find((m) => m.role === 'assistant' && !m.erro)?.text ?? ''
-  const chips = apiMessages.length === 0 ? tiposDeVoo : /manh[ãa]|tarde|noite|hor[áa]rio|per[íi]odo/i.test(ultimaResposta) ? periodos : []
+  const chips = history.length === 0 ? tiposDeVoo : /manh[ãa]|tarde|noite|hor[áa]rio|per[íi]odo/i.test(ultimaResposta) ? periodos : []
 
   return (
     <main className="min-h-svh bg-dp-night-950 pt-16">
@@ -359,9 +381,24 @@ export function PlanoDeVooChat() {
           {/* Chat */}
           <section aria-label="Conversa com o copiloto" className="flex h-[calc(100svh-7rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-dp-line bg-dp-night-900 lg:sticky lg:top-20">
             <div className="flex items-center justify-between border-b border-dp-line px-4 py-3">
-              <span className="flex items-center gap-2 text-sm font-semibold text-white">
-                <span className="size-2 rounded-full bg-dp-go-500" /> DroneCopiloto AI
-              </span>
+              <label className="flex min-w-0 items-center gap-2 text-sm font-semibold text-white">
+                <span className={`size-2 shrink-0 rounded-full ${provedorAtual?.disponivel ? 'bg-dp-go-500' : 'bg-dp-warn-500'}`} />
+                <span className="sr-only">Modelo de IA</span>
+                <select
+                  value={provider ?? ''}
+                  onChange={(e) => trocarProvedor(e.target.value)}
+                  disabled={carregando || provedores.length === 0}
+                  className="min-w-0 cursor-pointer truncate rounded-md border border-dp-line bg-dp-night-950 py-1 pr-1 pl-2 text-xs font-semibold text-white focus:border-dp-sky-400 focus:outline-none"
+                >
+                  {provedores.length === 0 && <option value="">DroneCopiloto AI</option>}
+                  {provedores.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label} · {p.model}
+                      {p.disponivel ? '' : ` (falta ${p.configurar})`}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {sinteseSuportada && (
                 <button
                   type="button"

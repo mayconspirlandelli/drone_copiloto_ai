@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react'
-import { ArrowDown, ShieldAlert } from 'lucide-react'
+import { ArrowDown, MessageSquare, ShieldAlert } from 'lucide-react'
 import { Container } from '@/components/Container'
 import { DroneTop } from '@/components/DroneGlyph'
 import { hero } from '@/data/content'
@@ -101,16 +101,16 @@ export function Hero() {
             className="mb-8 flex flex-wrap items-center gap-3"
           >
             <a
-              href="#plano-de-voo"
+              href="/plano-de-voo"
               className="inline-flex items-center gap-2 rounded-full bg-dp-signal-500 px-6 py-3 text-sm font-bold text-dp-night-950 transition-[background-color,transform] duration-150 hover:bg-dp-signal-300 active:scale-[0.97]"
             >
-              Ver plano de voo <ArrowDown className="size-4" />
+              Criar plano com IA <MessageSquare className="size-4" />
             </a>
             <a
-              href="#checklist"
-              className="rounded-full border border-white/25 px-6 py-3 text-sm font-semibold text-white transition-colors hover:border-dp-sky-400 hover:text-dp-sky-400"
+              href="#plano-de-voo"
+              className="inline-flex items-center gap-2 rounded-full border border-white/25 px-6 py-3 text-sm font-semibold text-white transition-colors hover:border-dp-sky-400 hover:text-dp-sky-400"
             >
-              Checklist pré-voo
+              Ver exemplo <ArrowDown className="size-4" />
             </a>
           </motion.div>
 

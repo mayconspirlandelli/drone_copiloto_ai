@@ -9,7 +9,7 @@ export function Navbar() {
 
   return (
     <Container className="flex items-center justify-between gap-6 py-4">
-      <a href="#top" aria-label="DroneCopiloto AI — início">
+      <a href="/" aria-label="DroneCopiloto AI — início">
         <Logo />
       </a>
 
@@ -26,7 +26,7 @@ export function Navbar() {
       </nav>
 
       <a
-        href="#checklist"
+        href="/#checklist"
         className="hidden whitespace-nowrap rounded-full bg-dp-signal-500 px-5 py-2.5 text-sm font-bold text-dp-night-950 transition-[background-color,transform] duration-150 hover:bg-dp-signal-300 active:scale-[0.97] md:inline-block"
       >
         Iniciar checklist
@@ -55,7 +55,7 @@ export function Navbar() {
               </a>
             ))}
             <a
-              href="#checklist"
+              href="/#checklist"
               onClick={() => setMobileOpen(false)}
               className="mt-2 rounded-full bg-dp-signal-500 px-6 py-3 text-center text-sm font-bold text-dp-night-950"
             >

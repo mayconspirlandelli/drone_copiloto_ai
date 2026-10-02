@@ -3,11 +3,11 @@
 // Valores numéricos são referências iniciais de planejamento, nunca garantias universais.
 
 export const navLinks = [
-  { label: 'Plano de voo', href: '#plano-de-voo' },
-  { label: 'Checklist', href: '#checklist' },
-  { label: 'Movimentos', href: '#movimentos' },
-  { label: 'Câmera', href: '#camera' },
-  { label: 'Segurança', href: '#seguranca' },
+  { label: 'Plano de voo', href: '/plano-de-voo' },
+  { label: 'Checklist', href: '/#checklist' },
+  { label: 'Movimentos', href: '/#movimentos' },
+  { label: 'Câmera', href: '/#camera' },
+  { label: 'Segurança', href: '/#seguranca' },
 ]
 
 export const hero = {

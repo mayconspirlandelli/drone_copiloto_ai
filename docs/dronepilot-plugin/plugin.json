@@ -1,0 +1,25 @@
+{
+  "interface": {
+    "displayName": "DronePilot AI \u2014 Copiloto de Voo e Cinematografia",
+    "shortDescription": "Planejamento e seguran\u00e7a de drones",
+    "longDescription": "Copiloto virtual em portugu\u00eas para checklists pr\u00e9 e p\u00f3s-voo, planejamento de captura, movimentos cinematogr\u00e1ficos, an\u00e1lise de imagens e orienta\u00e7\u00e3o de seguran\u00e7a. N\u00e3o substitui autoriza\u00e7\u00f5es, manuais ou julgamento do piloto.",
+    "developerName": "Criado com ChatGPT",
+    "category": "Lifestyle",
+    "capabilities": [
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Criar checklist pr\u00e9-voo",
+      "Elaborar plano de voo cinematogr\u00e1fico",
+      "Analisar uma imagem do local"
+    ]
+  },
+  "name": "dronepilot-ai",
+  "version": "0.1.0",
+  "description": "Assistente para planejamento de voo de drones, checklists de seguran\u00e7a, an\u00e1lise visual e cinematografia a\u00e9rea.",
+  "author": {
+    "name": "OpenAI User"
+  },
+  "keywords": [],
+  "skills": "./skills"
+}

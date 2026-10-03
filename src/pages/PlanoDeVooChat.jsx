@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Check, ImagePlus, Loader2, Map as MapIcon, Mic, MicOff, RotateCcw, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react'
+import { Check, Eye, EyeOff, ImagePlus, KeyRound, Settings2, Loader2, Map as MapIcon, Mic, MicOff, RotateCcw, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react'
 import { Container } from '@/components/Container'
 import { DroneTop } from '@/components/DroneGlyph'
 import { legendaCAD, PlantaCAD } from '@/components/plano/PlantaCAD'
@@ -190,10 +190,124 @@ function Resultado({ plano, exemplo }) {
   )
 }
 
+const STORAGE_MODELO = 'dronecopiloto-modelo'
+
+function carregarConfig() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_MODELO) || 'null')
+  } catch {
+    return null
+  }
+}
+
+function salvarConfig(config) {
+  try {
+    if (config) localStorage.setItem(STORAGE_MODELO, JSON.stringify(config))
+    else localStorage.removeItem(STORAGE_MODELO)
+  } catch {
+    // armazenamento indisponível: a configuração vale só nesta aba
+  }
+}
+
+/** Painel para escolher provedor, modelo e informar a própria chave de API. */
+function ModeloConfig({ provedores, provider, model, apiKey, lembrar, onChange, onClose }) {
+  const [mostrarChave, setMostrarChave] = useState(false)
+  const atual = provedores.find((p) => p.id === provider)
+  const campo =
+    'w-full rounded-lg border border-dp-line bg-dp-night-950 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-dp-sky-400 focus:outline-none'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, transform: 'translateY(-6px)' }}
+      animate={{ opacity: 1, transform: 'translateY(0px)' }}
+      exit={{ opacity: 0, transform: 'translateY(-6px)' }}
+      transition={{ duration: 0.18, ease: EASE_OUT }}
+      className="border-b border-dp-line bg-dp-night-950/60 px-4 py-4"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="font-mono text-[10.5px] tracking-widest text-white/45 uppercase">Provedor</span>
+          <select value={provider ?? ''} onChange={(e) => onChange({ provider: e.target.value, model: '' })} className={`${campo} cursor-pointer`}>
+            {provedores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="font-mono text-[10.5px] tracking-widest text-white/45 uppercase">Modelo</span>
+          <input
+            list="dp-modelos"
+            value={model}
+            onChange={(e) => onChange({ model: e.target.value })}
+            placeholder={atual?.model ?? 'nome do modelo'}
+            spellCheck={false}
+            className={`${campo} font-mono`}
+          />
+          <datalist id="dp-modelos">
+            {atual?.sugestoes?.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </label>
+      </div>
+
+      {atual?.aceitaChave ? (
+        <label className="mt-3 flex flex-col gap-1.5">
+          <span className="flex items-center gap-1.5 font-mono text-[10.5px] tracking-widest text-white/45 uppercase">
+            <KeyRound className="size-3" /> Chave da API · {atual.label}
+          </span>
+          <div className="relative">
+            <input
+              type={mostrarChave ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(e) => onChange({ apiKey: e.target.value })}
+              placeholder={atual.disponivel ? 'Opcional — o servidor já tem uma chave' : 'Cole sua chave de API'}
+              autoComplete="off"
+              spellCheck={false}
+              className={`${campo} pr-10 font-mono`}
+            />
+            <button
+              type="button"
+              onClick={() => setMostrarChave(!mostrarChave)}
+              aria-label={mostrarChave ? 'Ocultar chave' : 'Mostrar chave'}
+              className="absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer p-1 text-white/50 hover:text-white"
+            >
+              {mostrarChave ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+        </label>
+      ) : (
+        <p className="mt-3 text-xs text-white/50">
+          O Ollama roda no servidor configurado pelo administrador ({atual?.disponivel ? 'disponível' : `falta ${atual?.configurar} no .env`}) e não precisa de chave.
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-white/65">
+          <input type="checkbox" checked={lembrar} onChange={(e) => onChange({ lembrar: e.target.checked })} className="accent-dp-signal-500" />
+          Lembrar neste navegador
+        </label>
+        <button type="button" onClick={onClose} className="cursor-pointer rounded-full bg-dp-signal-500 px-4 py-1.5 text-xs font-bold text-dp-night-950 hover:bg-dp-signal-300">
+          Pronto
+        </button>
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-white/40">
+        A chave é enviada ao servidor do site apenas para chamar a API do provedor escolhido e não é salva no servidor. Trocar de provedor ou de modelo começa uma conversa nova.
+      </p>
+    </motion.div>
+  )
+}
+
 export function PlanoDeVooChat() {
   const [history, setHistory] = useState([]) // histórico no formato nativo do provedor
   const [provedores, setProvedores] = useState([])
   const [provider, setProvider] = useState(null)
+  const [model, setModel] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [lembrar, setLembrar] = useState(false)
+  const [configAberta, setConfigAberta] = useState(false)
   const [display, setDisplay] = useState([{ role: 'assistant', text: saudacao }])
   const [input, setInput] = useState('')
   const [anexos, setAnexos] = useState([]) // { block, preview }
@@ -221,13 +335,28 @@ export function PlanoDeVooChat() {
     fetch('/api/provedores')
       .then((r) => r.json())
       .then((data) => {
-        setProvedores(data.provedores ?? [])
-        setProvider(data.padrao)
+        const lista = data.provedores ?? []
+        setProvedores(lista)
+        const salvo = carregarConfig()
+        const valido = salvo && lista.some((p) => p.id === salvo.provider)
+        const escolhido = valido ? salvo.provider : data.padrao
+        setProvider(escolhido)
+        if (valido) {
+          setModel(salvo.model ?? '')
+          setApiKey(salvo.apiKey ?? '')
+          setLembrar(true)
+        }
+        const atual = lista.find((p) => p.id === escolhido)
+        if (atual && !atual.disponivel && !(valido && salvo.apiKey)) setConfigAberta(true)
       })
       .catch(() => {
         // servidor indisponível: o erro aparece ao enviar a primeira mensagem
       })
   }, [])
+
+  useEffect(() => {
+    if (provider) salvarConfig(lembrar ? { provider, model, apiKey } : null)
+  }, [provider, model, apiKey, lembrar])
 
   // Em telas estreitas o resultado fica abaixo do chat: leva o piloto até a planta gerada.
   useEffect(() => {
@@ -247,7 +376,7 @@ export function PlanoDeVooChat() {
       const res = await fetch('/api/plano-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, history, mensagem }),
+        body: JSON.stringify({ provider, model: model.trim() || undefined, apiKey: apiKey.trim() || undefined, history, mensagem }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.erro || `Erro ${res.status}`)
@@ -333,12 +462,22 @@ export function PlanoDeVooChat() {
 
   const provedorAtual = provedores.find((p) => p.id === provider)
 
-  // Cada provedor tem seu formato de histórico: trocar de modelo começa uma conversa nova.
-  function trocarProvedor(id) {
-    if (id === provider) return
-    reiniciar()
-    setProvider(id)
+  // Cada provedor/modelo tem seu formato de histórico: trocar começa uma conversa nova.
+  function mudarConfig(mudancas) {
+    const trocaModelo =
+      ('provider' in mudancas && mudancas.provider !== provider) || ('model' in mudancas && mudancas.model !== model)
+    if (trocaModelo && history.length > 0) reiniciar()
+    if ('provider' in mudancas) {
+      if (mudancas.provider !== provider) setApiKey('')
+      setProvider(mudancas.provider)
+    }
+    if ('model' in mudancas) setModel(mudancas.model)
+    if ('apiKey' in mudancas) setApiKey(mudancas.apiKey)
+    if ('lembrar' in mudancas) setLembrar(mudancas.lembrar)
   }
+
+  const modeloEfetivo = model.trim() || provedorAtual?.model
+  const pronto = Boolean(provedorAtual && (provedorAtual.disponivel || (provedorAtual.aceitaChave && apiKey.trim())))
 
   const ultimaResposta = [...display].reverse().find((m) => m.role === 'assistant' && !m.erro)?.text ?? ''
   const chips = history.length === 0 ? tiposDeVoo : /manh[ãa]|tarde|noite|hor[áa]rio|per[íi]odo/i.test(ultimaResposta) ? periodos : []
@@ -381,24 +520,17 @@ export function PlanoDeVooChat() {
           {/* Chat */}
           <section aria-label="Conversa com o copiloto" className="flex h-[calc(100svh-7rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-dp-line bg-dp-night-900 lg:sticky lg:top-20">
             <div className="flex items-center justify-between border-b border-dp-line px-4 py-3">
-              <label className="flex min-w-0 items-center gap-2 text-sm font-semibold text-white">
-                <span className={`size-2 shrink-0 rounded-full ${provedorAtual?.disponivel ? 'bg-dp-go-500' : 'bg-dp-warn-500'}`} />
-                <span className="sr-only">Modelo de IA</span>
-                <select
-                  value={provider ?? ''}
-                  onChange={(e) => trocarProvedor(e.target.value)}
-                  disabled={carregando || provedores.length === 0}
-                  className="min-w-0 cursor-pointer truncate rounded-md border border-dp-line bg-dp-night-950 py-1 pr-1 pl-2 text-xs font-semibold text-white focus:border-dp-sky-400 focus:outline-none"
-                >
-                  {provedores.length === 0 && <option value="">DroneCopiloto AI</option>}
-                  {provedores.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label} · {p.model}
-                      {p.disponivel ? '' : ` (falta ${p.configurar})`}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <button
+                type="button"
+                onClick={() => setConfigAberta(!configAberta)}
+                aria-expanded={configAberta}
+                className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm font-semibold text-white transition-colors hover:bg-white/10"
+              >
+                <span className={`size-2 shrink-0 rounded-full ${pronto ? 'bg-dp-go-500' : 'bg-dp-warn-500'}`} />
+                <Settings2 className="size-4 shrink-0 text-white/60" />
+                <span className="truncate">{provedorAtual ? `${provedorAtual.label} · ${modeloEfetivo}` : 'Modelo de IA'}</span>
+                {!pronto && provedorAtual && <span className="shrink-0 text-xs font-normal text-dp-warn-500">informe a chave</span>}
+              </button>
               {sinteseSuportada && (
                 <button
                   type="button"
@@ -416,6 +548,20 @@ export function PlanoDeVooChat() {
                 </button>
               )}
             </div>
+
+            <AnimatePresence initial={false}>
+              {configAberta && provedores.length > 0 && (
+                <ModeloConfig
+                  provedores={provedores}
+                  provider={provider}
+                  model={model}
+                  apiKey={apiKey}
+                  lembrar={lembrar}
+                  onChange={mudarConfig}
+                  onClose={() => setConfigAberta(false)}
+                />
+              )}
+            </AnimatePresence>
 
             <div ref={listRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
               {display.map((msg, i) => (

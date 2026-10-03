@@ -57,7 +57,7 @@ Entrada por voz e leitura das respostas usam a Web Speech API do navegador (pt-B
 | Anthropic Claude | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `claude-opus-5-5` |
 | Ollama (local) | `OLLAMA_MODEL`, `OLLAMA_BASE_URL` (opcional) | `mistral-small3.1` |
 
-`LLM_PROVIDER` define o provedor padrão. No topo do chat há um seletor com todos os provedores; os que não têm chave aparecem marcados. Trocar de provedor começa uma conversa nova, porque cada API guarda o histórico em formato próprio.
+`LLM_PROVIDER` define o provedor padrão. No topo do chat, o botão **Modelo de IA** abre um painel onde a pessoa escolhe o **provedor**, digita o **modelo** (com sugestões) e informa a **própria chave de API**. A chave vai ao servidor só para chamar o provedor: não é salva nem registrada em log (opcionalmente fica no navegador com "Lembrar neste navegador"). Sem chave informada, o servidor usa a do `.env`, se houver. O Ollama usa apenas o endereço configurado no servidor. Trocar de provedor começa uma conversa nova, porque cada API guarda o histórico em formato próprio.
 
 Para o Ollama, use um modelo com **visão e ferramentas** (ex.: `mistral-small3.1`, `qwen3-vl`). Modelos pequenos podem demorar e errar o JSON da planta — o servidor valida o resultado e pede para o modelo gerar de novo quando vier incompleto.
 

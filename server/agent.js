@@ -205,8 +205,8 @@ function planoValido(args) {
  * `history` é o histórico no formato nativo do provedor (o navegador guarda e reenvia
  * sem alterar — inclusive blocos e assinaturas de raciocínio). Retorna o histórico atualizado.
  */
-export async function runAgentTurn({ provider: providerId, history, mensagem }) {
-  const provider = getProvider(providerId)
+export async function runAgentTurn({ provider: providerId, model, apiKey, history, mensagem }) {
+  const provider = getProvider(providerId, { model, apiKey })
   const conversa = [...history, provider.userMessage(mensagem)]
   const events = { desenho: null, plano: null }
   let finalText = ''

@@ -19,8 +19,8 @@ const app = express()
 app.use(express.json({ limit: '20mb' }))
 
 const mensagensDeErro = {
-  401: 'Chave da API inválida. Confira o .env.',
-  403: 'A chave não tem permissão para este modelo. Confira o .env.',
+  401: 'Chave da API inválida. Confira a chave informada (ou o .env do servidor).',
+  403: 'A chave não tem permissão para este modelo.',
   404: 'Modelo não encontrado. Confira o nome do modelo no .env.',
   429: 'Limite de uso da API atingido. Aguarde alguns segundos e tente de novo.',
 }
@@ -30,19 +30,20 @@ app.get('/api/provedores', (_req, res) => {
 })
 
 app.post('/api/plano-chat', async (req, res) => {
-  const { provider = defaultProvider(), history = [], mensagem } = req.body ?? {}
+  const { provider = defaultProvider(), model, apiKey, history = [], mensagem } = req.body ?? {}
 
   const imagensOk =
     Array.isArray(mensagem?.images) &&
     mensagem.images.length <= 4 &&
     mensagem.images.every((img) => /^image\/(png|jpeg|webp|gif)$/.test(img?.mimeType) && typeof img.data === 'string')
-  if (!Array.isArray(history) || history.length > MAX_CONTENTS || typeof mensagem?.text !== 'string' || !imagensOk) {
+  const camposOk = (model == null || typeof model === 'string') && (apiKey == null || (typeof apiKey === 'string' && apiKey.length <= 300))
+  if (!Array.isArray(history) || history.length > MAX_CONTENTS || typeof mensagem?.text !== 'string' || !imagensOk || !camposOk) {
     res.status(400).json({ erro: 'Mensagem ou histórico de conversa inválido.' })
     return
   }
 
   try {
-    res.json(await runAgentTurn({ provider, history, mensagem }))
+    res.json(await runAgentTurn({ provider, model, apiKey, history, mensagem }))
   } catch (err) {
     if (err instanceof ProviderConfigError) {
       res.status(err.status).json({ erro: err.message })
@@ -50,12 +51,14 @@ app.post('/api/plano-chat', async (req, res) => {
     }
     let normalizado = null
     try {
-      normalizado = getProvider(provider).normalizeError(err)
+      normalizado = getProvider(provider, { model, apiKey }).normalizeError(err)
     } catch {
       // provedor indisponível: cai no erro genérico
     }
     if (normalizado) {
-      console.error(`[${provider}] ${normalizado.status}:`, normalizado.message)
+      // Erros de autenticação podem ecoar parte da chave: registra só o status.
+      const detalhe = [401, 403].includes(normalizado.status) ? '(autenticação)' : normalizado.message
+      console.error(`[${provider}] ${normalizado.status}:`, detalhe)
       const erro = mensagensDeErro[normalizado.status] ?? `Falha na API (${normalizado.status}): ${normalizado.message.slice(0, 300)}`
       res.status(normalizado.status === 429 ? 429 : 502).json({ erro })
     } else {
